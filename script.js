@@ -17,7 +17,7 @@ const readyButton = document.getElementById('ready-button');
 
 // --- Variables de Estado del Cliente ---
 // !!! IMPORTANTE: TU URL DE HEROKU AQUÍ !!!
-const HEROKU_APP_URL = 'wss://git.heroku.com/plandeldiablo.git'; // **¡Esta es tu URL de Heroku!**
+const HEROKU_APP_URL = 'wss://plandeldiablo-6f2d69afee20.herokuapp.com';
 
 let socket = null; // La conexión WebSocket
 let playerId = null; // El ID que el servidor asigna a este cliente
