@@ -6,8 +6,6 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 // Sirve los archivos estáticos desde el directorio raíz del proyecto.
-// Esto es útil si tienes tu frontend (index.html, script.js, style.css)
-// en la misma carpeta que tu server.js en Heroku.
 app.use(express.static(path.join(__dirname)));
 
 const server = app.listen(PORT, () => {
@@ -52,6 +50,23 @@ wss.on('connection', ws => {
     ws.send(JSON.stringify({ type: 'playerConnected', playerId: playerId }));
     // Actualiza el estado de los jugadores para todos los clientes.
     broadcastPlayerStatus();
+
+    // === INICIO DEL PING/PONG para mantener la conexión viva ===
+    // Configura un intervalo para enviar pings periódicamente a este cliente
+    let pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.ping(); // Envía un ping al cliente
+        }
+    }, 30 * 1000); // Envía un ping cada 30 segundos (menos de los 55 segundos de Heroku)
+
+    // Escucha los pongs del cliente para saber que sigue vivo
+    ws.on('pong', () => {
+        // No necesitas hacer nada aquí, solo con que se reciba el pong, la conexión se mantiene viva.
+        // Puedes descomentar la siguiente línea para depuración si quieres ver los pongs:
+        // console.log(`Pong recibido de Jugador ${playerId} (${players.find(p => p.id === playerId)?.name})`);
+    });
+    // === FIN DEL PING/PONG ===
+
 
     // --- Manejo de Mensajes del Cliente ---
     ws.on('message', message => {
@@ -128,6 +143,11 @@ wss.on('connection', ws => {
     ws.on('close', () => {
         const disconnectedPlayer = players.find(p => p.id === playerId);
         console.log(`Jugador ${playerId} (${disconnectedPlayer?.name || 'Desconocido'}) desconectado.`);
+
+        // === LIMPIA EL INTERVALO DE PING CUANDO LA CONEXIÓN SE CIERRA ===
+        clearInterval(pingInterval); // Detiene el ping cuando el jugador se desconecta
+        pingInterval = null; // Limpia la referencia
+        // ===============================================================
 
         // Eliminar al jugador de la lista.
         players = players.filter(p => p.ws !== ws);
