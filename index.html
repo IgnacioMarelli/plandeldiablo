@@ -7,16 +7,30 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="game-container">
-        <h1>El Último en Soltar el Botón</h1>
-        <div id="status-message" class="message">Esperando jugadores...</div>
-        <div id="player-status-container">
-            </div>
-        <button id="hold-button" class="btn" disabled>Mantener Presionado</button>
-        <div id="timer-display" class="timer">Tiempo restante: --:--</div>
-        <div id="round-winner" class="message winner"></div>
-        <div id="game-over-message" class="message game-over"></div>
-        <button id="reset-button" class="btn reset-btn" style="display: none;">Reiniciar Juego</button>
+    <div class="container">
+        <h1>El Último en Soltar</h1>
+
+        <div id="name-section" class="input-section">
+            <input type="text" id="name-input" placeholder="Tu nombre de jugador" maxlength="20">
+            <button id="name-submit-button">Unirse al juego</button>
+        </div>
+
+        <p id="status-message">Conectando al servidor...</p>
+        <p id="round-winner" class="message winner"></p>
+        <p id="game-over-message" class="message game-over"></p>
+
+        <div class="game-area">
+            <p id="timer-display" class="timer">Tiempo restante: --:--.--</p>
+            <button id="hold-button" class="game-button" disabled>Mantener Presionado</button>
+        </div>
+
+        <div class="player-list">
+            <h2>Estado de los Jugadores</h2>
+            <div id="player-status-container">
+                </div>
+        </div>
+
+        <button id="reset-button" class="reset-button" style="display: none;">Reiniciar Juego (Solo Admin)</button>
     </div>
 
     <script src="script.js"></script>
