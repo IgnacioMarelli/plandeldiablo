@@ -1,299 +1,288 @@
 body {
     font-family: 'Arial', sans-serif;
+    background-color: #282c34; /* Fondo oscuro */
+    color: #eee; /* Texto claro */
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
     margin: 0;
-    background-color: #282c34;
-    color: #e0e0e0;
-    text-align: center;
-    overflow-x: hidden; /* Evitar scroll horizontal en móviles */
+    padding: 20px;
+    box-sizing: border-box;
 }
 
 .container {
-    background-color: #3a3f47;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    max-width: 90%; /* Ajuste para móviles */
-    width: 500px;
-    box-sizing: border-box; /* Incluir padding en el ancho */
-    margin: 20px 0; /* Margen superior e inferior para evitar que se pegue a los bordes */
+    background-color: #3a3f4a; /* Contenedor más claro que el fondo */
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+    text-align: center;
+    width: 100%;
+    max-width: 600px;
+    box-sizing: border-box;
+    border: 1px solid #555;
 }
 
 h1 {
-    color: #61dafb;
-    margin-bottom: 20px;
+    color: #61dafb; /* Color principal (azul cian) */
+    margin-bottom: 25px;
+    font-size: 2.2em;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-p {
-    margin-bottom: 10px;
-}
-
-.input-section {
-    margin-bottom: 20px;
-}
-
-#name-input {
-    padding: 10px;
-    border-radius: 5px;
-    border: 1px solid #555;
-    background-color: #444;
-    color: #eee;
-    width: calc(100% - 120px); /* Ajuste para el botón al lado */
-    margin-right: 10px;
-    box-sizing: border-box;
-}
-
-#name-submit-button {
+.message {
     padding: 10px 15px;
-    border: none;
-    border-radius: 5px;
-    background-color: #61dafb;
-    color: #282c34;
-    cursor: pointer;
+    margin: 15px 0;
+    border-radius: 8px;
     font-weight: bold;
-    transition: background-color 0.2s ease;
+    font-size: 1.1em;
 }
 
-#name-submit-button:hover {
-    background-color: #4fa3d1;
-}
-
-.game-area {
-    margin-top: 30px;
-    margin-bottom: 30px;
-}
-
-.timer {
-    font-size: 1.8em;
-    font-weight: bold;
-    color: #f7b053;
-    margin-bottom: 20px;
-}
-
-.game-button {
-    background-color: #007bff;
+.winner {
+    background-color: #4CAF50; /* Verde */
     color: white;
-    padding: 20px 40px;
+}
+
+.game-over {
+    background-color: #f44336; /* Rojo */
+    color: white;
+}
+
+#status-message {
+    color: #bbb;
+    margin-bottom: 20px;
+    font-size: 1.05em;
+    min-height: 25px; /* Para evitar saltos cuando el texto cambia */
+}
+
+/* Estilos generales para botones de acción (como "Unirse", "Listo", "Reiniciar") */
+.action-button {
+    background-color: #61dafb; /* Un azul cian, puedes ajustar */
+    color: #282c34; /* Texto oscuro para contraste */
+    padding: 12px 25px;
     border: none;
-    border-radius: 10px;
-    font-size: 1.8em; /* Tamaño grande para tocar con el dedo */
+    border-radius: 8px;
+    font-size: 1.1em;
     font-weight: bold;
     cursor: pointer;
-    transition: background-color 0.3s ease, transform 0.1s ease;
-    width: 100%; /* Ocupa todo el ancho disponible */
-    box-sizing: border-box;
-    -webkit-tap-highlight-color: rgba(0,0,0,0); /* Evitar el resaltado azul al tocar en móviles */
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.3s ease, transform 0.1s ease, box-shadow 0.3s ease;
+    margin-bottom: 20px; /* Espacio debajo del botón */
+    -webkit-tap-highlight-color: rgba(0,0,0,0); /* Evitar el resaltado azul en móviles */
 }
 
-.game-button:disabled {
-    background-color: #555;
-    cursor: not-allowed;
+.action-button:hover {
+    background-color: #4fa3d1; /* Color más oscuro al pasar el mouse */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
 }
 
-.game-button.holding {
-    background-color: #0056b3;
-    transform: scale(0.98); /* Pequeño efecto de "apretado" */
-}
-
-/* Nuevos estilos para el botón bloqueado (rojo) */
-.game-button.blocked {
-    background-color: #dc3545; /* Rojo */
-    cursor: not-allowed;
-    animation: pulseRed 0.5s infinite alternate; /* Animación para resaltarlo */
-}
-
-/* Nuevo estilo para botón eliminado (si se queda sin tiempo) */
-.game-button.eliminated-button {
-    background-color: #6c757d; /* Gris oscuro */
-    cursor: not-allowed;
-    opacity: 0.7;
-}
-
-@keyframes pulseRed {
-    from { box-shadow: 0 0 0px rgba(220, 53, 69, 0.7); }
-    to { box-shadow: 0 0 10px rgba(220, 53, 69, 0.7); }
-}
-
-
-.player-list h2 {
-    color: #61dafb;
-    margin-top: 30px;
-    margin-bottom: 15px;
-}
-
-#player-status-container {
-    display: flex;
-    flex-wrap: wrap; /* Permite que los jugadores se envuelvan en varias líneas */
-    justify-content: center;
-    gap: 10px; /* Espacio entre los jugadores */
-}
-
-.player-status {
-    background-color: #444;
-    padding: 8px 12px;
-    border-radius: 5px;
-    margin: 5px;
-    min-width: 120px; /* Ancho mínimo para cada jugador */
-    flex: 1 1 auto; /* Permite que los elementos crezcan y se encojan */
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
+.action-button:active {
+    transform: translateY(2px); /* Pequeño efecto de "apretar" */
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.player-status span:first-child { /* Nombre del jugador */
-    font-weight: bold;
-    color: #eee;
-    margin-bottom: 5px;
-}
-
-.player-status span:last-child { /* Estado */
-    font-size: 0.9em;
-    color: #bbb;
-}
-
-.player-status.holding {
-    background-color: #0056b3; /* Color si está apretando */
-    box-shadow: 0 0 8px rgba(0, 123, 255, 0.5);
-}
-
-.player-status.eliminated {
-    background-color: #5a1d22; /* Rojo oscuro para eliminados */
-    text-decoration: line-through;
+.action-button:disabled {
+    background-color: #6c757d; /* Gris si está deshabilitado */
+    cursor: not-allowed;
     opacity: 0.7;
 }
 
-.player-status.is-me { /* Resalta al propio jugador */
-    border: 2px solid #61dafb;
-    box-shadow: 0 0 10px rgba(97, 218, 251, 0.5);
-}
-
-/* Nuevo estilo para jugadores bloqueados por no apretar a tiempo */
-.player-status.blockedInRound {
-    background-color: #8c2a32; /* Un rojo intermedio */
-    opacity: 0.8;
-}
-
-
-.message {
-    margin-top: 15px;
-    font-size: 1.2em;
-    font-weight: bold;
-}
-
-.message.winner {
-    color: #28a745; /* Verde para el ganador de la ronda */
-}
-
-.message.game-over {
-    color: #ffc107; /* Amarillo para el fin del juego */
-}
-
+/* Estilos específicos para el botón de reinicio */
 .reset-button {
-    background-color: #f44336;
+    background-color: #f44336; /* Rojo para reiniciar */
     color: white;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 5px;
-    font-size: 1em;
-    cursor: pointer;
     margin-top: 20px;
-    transition: background-color 0.2s ease;
 }
 
 .reset-button:hover {
-    background-color: #d32f2f;
+    background-color: #da190b;
 }
 
-/* Media Queries para móviles */
+
+/* Estilos para el campo de texto del nombre y su botón */
+.input-section {
+    margin-bottom: 25px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap; /* Permitir que los elementos se envuelvan en pantallas pequeñas */
+}
+
+#name-input {
+    flex-grow: 1;
+    padding: 12px 15px;
+    border-radius: 8px;
+    border: 2px solid #555;
+    background-color: #333;
+    color: #eee;
+    font-size: 1.1em;
+    outline: none;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+#name-input::placeholder {
+    color: #aaa;
+}
+
+#name-input:focus {
+    border-color: #61dafb;
+    box-shadow: 0 0 8px rgba(97, 218, 251, 0.4);
+}
+
+/* Estilo para el botón principal del juego */
+.game-button {
+    background-color: #4CAF50; /* Verde */
+    color: white;
+    padding: 20px 40px;
+    font-size: 1.8em;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+    transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+    width: 80%; /* Ancho del botón */
+    max-width: 300px;
+    margin: 20px auto;
+    display: block; /* Para centrarlo con margin:auto */
+    -webkit-tap-highlight-color: rgba(0,0,0,0); /* Evitar el resaltado azul en móviles */
+}
+
+.game-button:hover:not(:disabled) {
+    background-color: #45a049;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+}
+
+.game-button:active:not(:disabled),
+.game-button.holding { /* Clase para cuando el botón está siendo apretado */
+    background-color: #3e8e41;
+    transform: translateY(3px);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+}
+
+.game-button:disabled {
+    background-color: #6c757d; /* Gris para deshabilitado */
+    cursor: not-allowed;
+    box-shadow: none;
+    opacity: 0.7;
+}
+
+.game-button.eliminated-button {
+    background-color: #dc3545; /* Rojo fuerte para eliminado */
+    cursor: not-allowed;
+}
+
+.game-button.blocked {
+    background-color: #ffc107; /* Amarillo/naranja para bloqueado */
+    color: #333;
+    cursor: not-allowed;
+}
+
+
+.timer {
+    font-size: 1.6em;
+    margin-bottom: 20px;
+    color: #61dafb;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.player-list {
+    margin-top: 30px;
+    background-color: #333742;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+.player-list h2 {
+    color: #61dafb;
+    margin-bottom: 15px;
+    font-size: 1.5em;
+}
+
+.player-status-container {
+    max-height: 250px; /* Altura máxima para la lista de jugadores */
+    overflow-y: auto; /* Scroll si hay muchos jugadores */
+    padding-right: 5px; /* Espacio para la barra de scroll */
+}
+
+.player-status {
+    background-color: #444a57;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1.1em;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.player-status:last-child {
+    margin-bottom: 0;
+}
+
+.player-status span:first-child {
+    font-weight: bold;
+    color: #eee;
+}
+
+.player-status span:last-child {
+    color: #bbb;
+    font-size: 0.9em;
+}
+
+.player-status.holding {
+    background-color: #28a745; /* Verde si está manteniendo */
+    color: white;
+    box-shadow: 0 0 10px rgba(40, 167, 69, 0.7);
+}
+
+.player-status.eliminated {
+    background-color: #dc3545; /* Rojo si está eliminado */
+    color: white;
+    opacity: 0.7;
+    text-decoration: line-through;
+}
+
+.player-status.blockedInRound {
+    background-color: #ffc107; /* Amarillo/naranja si está bloqueado en ronda */
+    color: #333;
+    opacity: 0.9;
+}
+
+.player-status.is-me {
+    border: 2px solid #61dafb; /* Borde azul para el propio jugador */
+    box-shadow: 0 0 12px rgba(97, 218, 251, 0.8);
+}
+
+.player-status.is-ready {
+    background-color: #17a2b8; /* Un color de "listo" (cyan oscuro) */
+    box-shadow: 0 0 8px rgba(23, 162, 184, 0.5);
+    color: white;
+}
+
+
+/* Media Queries para responsividad */
 @media (max-width: 600px) {
     .container {
-        padding: 15px;
-        margin: 10px 0;
+        padding: 20px;
+        margin: 10px;
     }
 
     h1 {
         font-size: 1.8em;
     }
 
-    .game-button {
-        font-size: 1.5em;
-        padding: 15px 30px;
+    .message {
+        font-size: 1em;
+        padding: 8px 10px;
     }
 
-    .player-status {
-        min-width: unset; /* Deja que el ancho se ajuste */
-        flex: 1 1 45%; /* Dos columnas en pantallas pequeñas */
-    }
-    
-}
-/* --- style.css (Solo las partes relevantes para el botón de unirse y el input) --- */
-
-/* Estilos generales del contenedor para el input y el botón */
-.input-section {
-    margin-bottom: 25px; /* Más espacio inferior */
-    display: flex; /* Para alinear el input y el botón en la misma línea */
-    gap: 10px; /* Espacio entre el input y el botón */
-    align-items: center; /* Centrar verticalmente los elementos */
-    justify-content: center; /* Centrar horizontalmente si el contenido es menor al ancho */
-    flex-wrap: wrap; /* Permitir que los elementos se envuelvan en pantallas pequeñas */
-}
-
-/* Estilos para el campo de texto del nombre */
-#name-input {
-    flex-grow: 1; /* Permitir que el input crezca para ocupar espacio disponible */
-    padding: 12px 15px; /* Más padding para un mejor toque y visibilidad */
-    border-radius: 8px; /* Bordes más suaves */
-    border: 2px solid #555; /* Borde más pronunciado */
-    background-color: #333; /* Fondo más oscuro */
-    color: #eee; /* Color de texto claro */
-    font-size: 1.1em; /* Texto un poco más grande */
-    outline: none; /* Quitar el contorno feo al enfocar */
-    transition: border-color 0.3s ease, box-shadow 0.3s ease; /* Transiciones suaves */
-}
-
-#name-input::placeholder {
-    color: #aaa; /* Color del placeholder */
-}
-
-#name-input:focus {
-    border-color: #61dafb; /* Borde azul al enfocar */
-    box-shadow: 0 0 8px rgba(97, 218, 251, 0.4); /* Sombra azul al enfocar */
-}
-
-/* Estilos para el botón "Unirse al juego" */
-#name-submit-button {
-    padding: 12px 25px; /* Más padding para un botón más grande y fácil de tocar */
-    border: none; /* Sin borde */
-    border-radius: 8px; /* Bordes más suaves */
-    background-color: #61dafb; /* Color principal (azul cian) */
-    color: #282c34; /* Texto oscuro para contraste */
-    cursor: pointer;
-    font-weight: bold;
-    font-size: 1.1em; /* Texto un poco más grande */
-    letter-spacing: 0.5px; /* Espaciado entre letras */
-    text-transform: uppercase; /* Texto en mayúsculas */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Sombra sutil */
-    transition: background-color 0.3s ease, transform 0.1s ease, box-shadow 0.3s ease; /* Transiciones suaves */
-    -webkit-tap-highlight-color: rgba(0,0,0,0); /* Evitar el resaltado azul en móviles */
-}
-
-#name-submit-button:hover {
-    background-color: #4fa3d1; /* Color más oscuro al pasar el mouse */
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3); /* Sombra más pronunciada al pasar el mouse */
-}
-
-#name-submit-button:active {
-    transform: translateY(2px); /* Pequeño efecto de "apretar" */
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Sombra reducida al apretar */
-}
-
-/* Media Queries para pantallas más pequeñas (móviles) */
-@media (max-width: 600px) {
     .input-section {
         flex-direction: column; /* Apilar el input y el botón verticalmente */
         align-items: stretch; /* Estirar los elementos al ancho completo */
@@ -305,7 +294,29 @@ p {
         margin-bottom: 10px; /* Espacio entre el input y el botón cuando están apilados */
     }
 
-    #name-submit-button {
-        width: 100%; /* El botón ocupa todo el ancho */
+    #name-submit-button,
+    .action-button {
+        width: 100%; /* Los botones ocupan todo el ancho */
+        font-size: 1em;
+        padding: 10px 20px;
+    }
+
+    .game-button {
+        padding: 15px 25px;
+        font-size: 1.5em;
+        width: 90%;
+    }
+
+    .timer {
+        font-size: 1.4em;
+    }
+
+    .player-list h2 {
+        font-size: 1.3em;
+    }
+
+    .player-status {
+        font-size: 1em;
+        padding: 8px 10px;
     }
 }

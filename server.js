@@ -291,7 +291,7 @@ function startRound() {
             endRound(activeHoldingPlayers[0].id);
             return;
         } else if (activeHoldingPlayers.length === 0 && roundActive) {
-            // Si nadie está apretando y la ronda estaba activa, la ronda termina sin ganador.
+            // Si todos soltan y la ronda estaba activa, la ronda termina sin ganador.
             clearInterval(timeInterval);
             roundActive = false;
             console.log('Todos soltaron/bloqueados en la ronda, deteniendo timer.');
