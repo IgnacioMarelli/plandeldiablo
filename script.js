@@ -49,152 +49,147 @@ function connectWebSocket() {
         readyButton.textContent = 'Estoy Listo'; // Resetear el texto del botón de listo
     };
 
-    socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        console.log('Mensaje del servidor:', data);
+socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log('Mensaje del servidor:', data);
 
-        switch (data.type) {
-            case 'playerConnected':
-                playerId = data.playerId;
-                // Si el jugador ya ingresó un nombre antes (ej. en una reconexión o si recargó), lo envía al servidor.
-                if (playerName !== 'Anónimo') {
-                    socket.send(JSON.stringify({ type: 'setPlayerName', playerId: playerId, name: playerName }));
-                    nameSection.style.display = 'none'; // Oculta la sección de nombre
-                    readyButton.style.display = 'block'; // Muestra el botón de listo
-                    // El mensaje de estado se actualizará con 'waitingForReady'
-                } else {
-                    // Si es un nuevo jugador o no tenía nombre, se mostrará el input de nombre.
-                    statusMessage.textContent = `Eres el Jugador ${playerId}. Ingresa tu nombre para continuar.`;
-                }
-                break;
+    switch (data.type) {
+        case 'playerConnected':
+            playerId = data.playerId;
+            if (playerName !== 'Anónimo') {
+                socket.send(JSON.stringify({ type: 'setPlayerName', playerId: playerId, name: playerName }));
+                nameSection.style.display = 'none';
+                readyButton.style.display = 'block';
+            } else {
+                statusMessage.textContent = `Eres el Jugador ${playerId}. Ingresa tu nombre para continuar.`;
+            }
+            break;
 
-            case 'gameStart':
-                gameStarted = true;
-                holdButton.disabled = false; // Habilita el botón de juego
-                readyButton.style.display = 'none'; // Oculta el botón de listo una vez que el juego ha comenzado
-                statusMessage.textContent = '¡El juego ha comenzado! Mantén presionado el botón.';
-                roundWinnerDisplay.textContent = '';
-                gameOverMessage.textContent = '';
-                resetButton.style.display = 'none';
-                timerDisplay.textContent = 'Tu tiempo: --:--.--';
-                updatePlayerStatus(data.players);
-                break;
+        case 'gameStart':
+            gameStarted = true;
+            holdButton.disabled = false;
+            readyButton.style.display = 'none';
+            statusMessage.textContent = '¡El juego ha comenzado! Mantén presionado el botón.';
+            roundWinnerDisplay.textContent = '';
+            gameOverMessage.textContent = '';
+            resetButton.style.display = 'none';
+            timerDisplay.textContent = 'Tu tiempo: --:--.--';
+            updatePlayerStatus(data.players);
+            break;
 
-            case 'playerStatusUpdate':
-                updatePlayerStatus(data.players);
-                // Si el juego está en curso y no hay mensajes específicos de countdown/bloqueo, mantener el mensaje "en curso"
-                if (gameStarted && !statusMessage.textContent.includes('Ronda comienza en:') && !statusMessage.textContent.includes('Bloqueado')) {
-                     statusMessage.textContent = '¡El juego está en curso! Mantén presionado el botón.';
-                }
-                break;
+        case 'playerStatusUpdate':
+            updatePlayerStatus(data.players);
+            if (gameStarted && !statusMessage.textContent.includes('Ronda comienza en:') && !statusMessage.textContent.includes('Bloqueado')) {
+                statusMessage.textContent = '¡El juego está en curso! Mantén presionado el botón.';
+            }
+            break;
 
-            case 'playerEliminated':
-                if (data.eliminatedPlayerId === playerId) {
-                    holdButton.disabled = true;
-                    holdButton.classList.add('eliminated-button'); // Estilo rojo para botón bloqueado por eliminación
-                    statusMessage.textContent = '¡Has sido eliminado! Tu tiempo se agotó.';
-                }
-                updatePlayerStatus(data.players);
-                break;
-
-            case 'roundStart':
-                holdButton.disabled = false;
-                holdButton.classList.remove('eliminated-button');
-                holdButton.classList.remove('blocked'); // Asegurarse de que no esté bloqueado al inicio de una nueva ronda
-                isHolding = false;
-                timerDisplay.textContent = 'Tu tiempo: --:--.--';
-                statusMessage.textContent = '¡Nueva ronda! Mantén presionado el botón.';
-                roundWinnerDisplay.textContent = '';
-                updatePlayerStatus(data.players);
-                break;
-
-            case 'roundWinner':
-                roundWinnerDisplay.textContent = `¡${data.winnerName || 'El Jugador ' + data.winnerId} ganó la ronda!`;
-                holdButton.disabled = true; // Deshabilita el botón al final de la ronda
-                updatePlayerStatus(data.players);
-                break;
-
-            case 'gameOver':
-                gameStarted = false;
+        case 'playerEliminated':
+            if (data.eliminatedPlayerId === playerId) {
                 holdButton.disabled = true;
-                gameOverMessage.textContent = `¡Juego Terminado! ¡${data.winnerName || 'El Jugador ' + data.winnerId} es el campeón!`;
-                statusMessage.textContent = '';
-                roundWinnerDisplay.textContent = '';
-                resetButton.style.display = 'block'; // Muestra el botón de reinicio
-                updatePlayerStatus(data.players);
-                break;
+                holdButton.classList.add('eliminated-button');
+                statusMessage.textContent = '¡Has sido eliminado! Tu tiempo se agotó.';
+            }
+            updatePlayerStatus(data.players);
+            break;
 
-            case 'playerLeft':
-                statusMessage.textContent = `${data.playerName || 'Jugador ' + data.playerId} se ha desconectado.`;
-                updatePlayerStatus(data.players);
-                break;
+        case 'roundStart':
+            holdButton.disabled = false;
+            holdButton.classList.remove('eliminated-button');
+            holdButton.classList.remove('blocked');
+            isHolding = false;
+            timerDisplay.textContent = 'Tu tiempo: --:--.--';
+            statusMessage.textContent = '¡Nueva ronda! Mantén presionado el botón.';
+            roundWinnerDisplay.textContent = '';
+            updatePlayerStatus(data.players);
+            break;
 
-            case 'timeUpdate':
-                // Solo muestra el tiempo restante si eres el jugador activo
-                const remainingMinutes = Math.floor(data.remainingTime / 60000);
-                const remainingSeconds = Math.floor((data.remainingTime % 60000) / 1000);
-                const remainingMs = Math.floor((data.remainingTime % 1000) / 100); // Para décimas de segundo
-                timerDisplay.textContent = `Tu tiempo: ${remainingMinutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}.${remainingMs}`;
-                break;
+        case 'roundWinner':
+            roundWinnerDisplay.textContent = `¡${data.winnerName || 'El Jugador ' + data.winnerId} ganó la ronda!`;
+            holdButton.disabled = true;
+            updatePlayerStatus(data.players);
+            break;
 
-            case 'gameReset':
-                gameStarted = false;
+        case 'gameOver':
+            gameStarted = false;
+            holdButton.disabled = true;
+            gameOverMessage.textContent = `¡Juego Terminado! ¡${data.winnerName || 'El Jugador ' + data.winnerId} es el campeón!`;
+            statusMessage.textContent = '';
+            roundWinnerDisplay.textContent = '';
+            resetButton.style.display = 'block';
+            updatePlayerStatus(data.players);
+            break;
+
+        case 'playerLeft':
+            statusMessage.textContent = `${data.playerName || 'Jugador ' + data.playerId} se ha desconectado.`;
+            updatePlayerStatus(data.players);
+            break;
+
+        case 'timeUpdate':
+            const remainingMinutes = Math.floor(data.remainingTime / 60000);
+            const remainingSeconds = Math.floor((data.remainingTime % 60000) / 1000);
+            const remainingMs = Math.floor((data.remainingTime % 1000) / 100);
+            timerDisplay.textContent = `Tu tiempo: ${remainingMinutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}.${remainingMs}`;
+            break;
+
+        case 'gameReset':
+            gameStarted = false;
+            holdButton.disabled = true;
+            holdButton.classList.remove('eliminated-button');
+            holdButton.classList.remove('blocked');
+            statusMessage.textContent = 'El juego ha sido reiniciado. Ingresa tu nombre para volver a unirte.';
+            roundWinnerDisplay.textContent = '';
+            gameOverMessage.textContent = '';
+            resetButton.style.display = 'none';
+            timerDisplay.textContent = 'Tu tiempo: --:--.--';
+            playerStatusContainer.innerHTML = '';
+            nameSection.style.display = 'block';
+            readyButton.style.display = 'none';
+            playerName = 'Anónimo';
+            playerId = null;
+            isReady = false;
+            readyButton.disabled = false;
+            readyButton.textContent = 'Estoy Listo';
+            break;
+
+        case 'countdown':
+            statusMessage.textContent = `Ronda comienza en: ${data.countdown} segundos...`;
+            holdButton.disabled = false;
+            holdButton.classList.remove('blocked');
+            holdButton.classList.remove('eliminated-button');
+            break;
+
+        case 'blockPlayer':
+            if (data.playerIdToBlock === playerId) {
                 holdButton.disabled = true;
-                holdButton.classList.remove('eliminated-button');
-                holdButton.classList.remove('blocked');
-                statusMessage.textContent = 'El juego ha sido reiniciado. Ingresa tu nombre para volver a unirte.';
-                roundWinnerDisplay.textContent = '';
-                gameOverMessage.textContent = '';
-                resetButton.style.display = 'none';
-                timerDisplay.textContent = 'Tu tiempo: --:--.--';
-                playerStatusContainer.innerHTML = ''; // Limpia la lista de jugadores
-                nameSection.style.display = 'block'; // Muestra la sección del nombre de nuevo
-                readyButton.style.display = 'none'; // Oculta el botón de listo
-                playerName = 'Anónimo'; // Resetear nombre
-                playerId = null;
-                isReady = false; // Resetear el estado de listo
-                readyButton.disabled = false; // Habilitar el botón de listo para el próximo juego
-                readyButton.textContent = 'Estoy Listo'; // Resetear el texto del botón de listo
-                break;
+                holdButton.classList.add('blocked');
+                statusMessage.textContent = '¡No apretaste a tiempo! Bloqueado hasta la próxima ronda.';
+            }
+            break;
 
-            case 'countdown': // Cuenta regresiva de la ronda
-                statusMessage.textContent = `Ronda comienza en: ${data.countdown} segundos...`;
-                holdButton.disabled = false; // El botón está habilitado durante la cuenta regresiva
-                holdButton.classList.remove('blocked'); // Asegurarse de que no esté bloqueado
-                holdButton.classList.remove('eliminated-button');
-                break;
+        case 'waitingForReady':
+            const readyCount = data.readyCount;
+            const totalPlayers = data.totalPlayers;
+            const minPlayers = data.minPlayers;
+            if (!isReady) {
+                statusMessage.textContent = `Esperando a los demás: ${readyCount}/${totalPlayers} listos (${minPlayers} mínimo para iniciar).`;
+            } else {
+                statusMessage.textContent = `¡Estás listo! Esperando a los demás: ${readyCount}/${totalPlayers} listos (${minPlayers} mínimo para iniciar).`;
+            }
+            readyButton.style.display = 'block';
+            if (isReady) {
+                readyButton.disabled = true;
+                readyButton.textContent = '¡Listo!';
+            } else {
+                readyButton.disabled = false;
+                readyButton.textContent = 'Estoy Listo';
+            }
+            break;
 
-            case 'blockPlayer': // El servidor indica que este jugador ha sido bloqueado por no apretar a tiempo
-                if (data.playerIdToBlock === playerId) {
-                    holdButton.disabled = true;
-                    holdButton.classList.add('blocked'); // Añade la clase CSS para ponerlo rojo
-                    statusMessage.textContent = '¡No apretaste a tiempo! Bloqueado hasta la próxima ronda.';
-                }
-                break;
-
-            case 'waitingForReady': // Mensaje de espera de jugadores listos
-                const readyCount = data.readyCount;
-                const totalPlayers = data.totalPlayers;
-                const minPlayers = data.minPlayers;
-                if (!isReady) { // Si este jugador no ha pulsado listo
-                    statusMessage.textContent = `Esperando a los demás: ${readyCount}/${totalPlayers} listos (${minPlayers} mínimo para iniciar).`;
-                } else { // Si este jugador ya pulsó listo
-                    statusMessage.textContent = `¡Estás listo! Esperando a los demás: ${readyCount}/${totalPlayers} listos (${minPlayers} mínimo para iniciar).`;
-                }
-                readyButton.style.display = 'block'; // Asegura que el botón de listo esté visible
-                if (isReady) { // Si ya se hizo clic, el botón debe estar deshabilitado
-                    readyButton.disabled = true;
-                    readyButton.textContent = '¡Listo!';
-                } else {
-                    readyButton.disabled = false;
-                    readyButton.textContent = 'Estoy Listo';
-                }
-                break;
-
-            default:
-                console.warn('Tipo de mensaje desconocido:', data.type);
-        }
-    };
+        default:
+            console.warn('Tipo de mensaje desconocido:', data.type);
+    }
+};
 
     socket.onclose = (event) => {
         console.log('Desconectado del servidor WebSocket. Código:', event.code, 'Razón:', event.reason);
@@ -328,49 +323,25 @@ readyButton.addEventListener('click', () => {
 
 
 // --- Funciones de Actualización de la Interfaz ---
-function updatePlayerStatus(players) {
-    playerStatusContainer.innerHTML = ''; // Limpia la lista actual
-    players.forEach(player => {
-        const playerDiv = document.createElement('div');
-        playerDiv.className = 'player-status';
+function updateUIForGameState() {
+    // Es mejor que muestres/ocultes todo aquí basado en el estado
+    // y no en múltiples lugares.
+    if (gameStarted) {
+        document.getElementById('readyButton').style.display = 'none';
+        document.getElementById('gameButton').style.display = 'block';
+        document.getElementById('playerStatus').style.display = 'block';
+        document.getElementById('messageArea').textContent = '¡El juego está en curso! Mantén presionado el botón.';
+        document.getElementById('resetButton').style.display = 'none'; // Ocultar reset durante el juego
+    } else {
+        // Juego no iniciado o esperando para la siguiente ronda
+        document.getElementById('readyButton').style.display = 'block'; // Mostrar el botón "Listo"
+        document.getElementById('gameButton').style.display = 'none'; // Ocultar el botón de juego
+        document.getElementById('playerStatus').style.display = 'block';
+        document.getElementById('resetButton').style.display = 'block'; // Mostrar reset cuando el juego no está activo
 
-        // Añadir clases CSS según el estado del jugador
-        if (player.holding) {
-            playerDiv.classList.add('holding');
-        }
-        if (player.eliminated) {
-            playerDiv.classList.add('eliminated');
-        }
-        if (player.id === playerId) { // Resalta a este propio jugador
-            playerDiv.classList.add('is-me');
-        }
-        if (player.blockedInRound) { // Si el jugador fue bloqueado en la ronda actual
-            playerDiv.classList.add('blockedInRound');
-        }
-        if (player.isReady) { // Si el jugador ha pulsado "Listo"
-            playerDiv.classList.add('is-ready');
-        }
-
-        const nameSpan = document.createElement('span');
-        nameSpan.textContent = `${player.name}`;
-        playerDiv.appendChild(nameSpan);
-
-        const statusSpan = document.createElement('span');
-        if (player.eliminated) {
-            statusSpan.textContent = 'ELIMINADO';
-        } else if (player.blockedInRound) {
-             statusSpan.textContent = 'BLOQUEADO';
-        } else if (player.isReady && !gameStarted) { // Muestra "LISTO" si no ha iniciado el juego
-            statusSpan.textContent = 'LISTO';
-        } else if (player.holding) {
-            statusSpan.textContent = 'Manteniendo...';
-        } else {
-            statusSpan.textContent = 'Esperando...';
-        }
-        playerDiv.appendChild(statusSpan);
-
-        playerStatusContainer.appendChild(playerDiv);
-    });
+        // Esto será actualizado por el mensaje 'waitingForReady'
+        document.getElementById('messageArea').textContent = 'Esperando jugadores para iniciar o próxima ronda...';
+    }
 }
 
 // --- Inicio de la Conexión ---
