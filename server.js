@@ -255,14 +255,13 @@ function startCountdownAndRound() {
     if (roundActive || countdownInterval) return; // Evita iniciar si una ronda ya está activa o un countdown en curso.
 
     // Reiniciar SOLO el estado 'blockedInRound' para la nueva ronda.
-    // El 'holding' se reseteará al final de la ronda o si el juego termina.
+    // El 'holding' del jugador se mantiene si lo estaba apretando.
     players.forEach(p => {
         if (!p.eliminated) { // Solo afecta a jugadores no eliminados.
             p.blockedInRound = false; // Quitar el bloqueo de la ronda anterior.
         }
     });
-    // IMPORTANTE: NO limpiamos holdingPlayers.clear() aquí.
-    // holdingPlayers.clear() se debe limpiar solo al final de la ronda o del juego.
+    // holdingPlayers.clear() no va aquí, se llena en startRound() con los que APRETAN.
 
     broadcastPlayerStatus(); // Enviar el estado actualizado a los clientes.
 
@@ -301,6 +300,27 @@ function startRound() {
 
     roundActive = true;
     console.log('Ronda iniciada (consumo de tiempo).');
+
+    // Al iniciar la ronda, LIMPIAMOS y RE-POBLAMOS holdingPlayers
+    // con quienes ya están marcados como 'holding' Y NO ESTÁN ELIMINADOS/BLOQUEADOS.
+    holdingPlayers.clear(); // Limpiar por si quedó algo de la ronda anterior
+    players.forEach(p => {
+        if (p.holding && !p.eliminated && !p.blockedInRound) {
+            holdingPlayers.add(p.id);
+        }
+    });
+
+    // Si después de la limpieza y repoblación no hay jugadores manteniendo,
+    // la ronda no puede iniciar correctamente.
+    if (holdingPlayers.size === 0) {
+        console.log('Ningún jugador mantiene el botón al inicio de la ronda. Terminando ronda sin ganador.');
+        roundActive = false;
+        clearInterval(timeInterval);
+        broadcast({ type: 'roundEndedNoWinner', message: 'Nadie mantuvo el botón en esta ronda.' });
+        setTimeout(() => checkGameOver(), 2000);
+        return; // Salir de la función, la ronda no puede continuar.
+    }
+
     broadcast({ type: 'roundStart', players: players.map(p => ({ id: p.id, name: p.name, holding: p.holding, eliminated: p.eliminated, blockedInRound: p.blockedInRound })) });
 
     clearInterval(timeInterval); // Asegura que no haya intervalos duplicados.
@@ -309,41 +329,37 @@ function startRound() {
         let activeHoldingPlayers = players.filter(p => p.holding && !p.eliminated && !p.blockedInRound);
 
         if (activeHoldingPlayers.length === 1) {
-            // Si solo queda un jugador apretando, ese es el ganador de la ronda.
             endRound(activeHoldingPlayers[0].id);
             return;
         } else if (activeHoldingPlayers.length === 0 && roundActive) {
-            // Si todos soltan y la ronda estaba activa, la ronda termina sin ganador.
             clearInterval(timeInterval);
             roundActive = false;
             console.log('Todos soltaron/bloqueados en la ronda, deteniendo timer.');
             broadcast({ type: 'roundEndedNoWinner', message: 'Nadie mantuvo el botón en esta ronda.' });
-            setTimeout(() => checkGameOver(), 2000); // Pausa antes de chequear el fin del juego.
+            setTimeout(() => checkGameOver(), 2000);
             return;
         }
 
-        // Reduce el tiempo de los jugadores que están apretando.
         activeHoldingPlayers.forEach(player => {
-            player.timeRemaining -= 100; // Reduce 100ms (0.1 segundos).
+            player.timeRemaining -= 100;
             if (player.timeRemaining <= 0) {
                 player.timeRemaining = 0;
-                player.eliminated = true; // El jugador es eliminado.
-                player.holding = false;
-                holdingPlayers.delete(player.id); // Quitar de la lista de los que aprietan.
+                player.eliminated = true;
+                player.holding = false; // Deja de apretar al ser eliminado
+                holdingPlayers.delete(player.id);
                 console.log(`Jugador ${player.id} (${player.name}) eliminado por tiempo.`);
-                // Notificar al cliente específico que fue eliminado.
                 player.ws.send(JSON.stringify({ type: 'playerEliminated', eliminatedPlayerId: player.id, players: players.map(p => ({ id: p.id, name: p.name, holding: p.holding, eliminated: p.eliminated })) }));
             }
-            // Enviar actualización de tiempo solo a los que siguen apretando y no están eliminados/bloqueados.
             if (player.holding && !player.eliminated && !player.blockedInRound) {
                 player.ws.send(JSON.stringify({ type: 'timeUpdate', remainingTime: player.timeRemaining }));
             }
         });
 
-        broadcastPlayerStatus(); // Actualizar el estado de todos los jugadores.
-        checkGameOver(); // Verificar si el juego ha terminado después de cada tick de tiempo.
-
-    }, 100); // Ejecuta cada 100ms (10 veces por segundo).
+        broadcastPlayerStatus();
+        // checkGameOver() AQUI NO VA (se llama al final de la ronda o si todos sueltan)
+        // La lógica de eliminación de jugadores ya lo maneja dentro del foreach.
+        // Si eliminas al último y queda 1, se llama endRound, y endRound llama a checkGameOver.
+    }, 100);
 }
 
 /**
@@ -357,15 +373,16 @@ function endRound(winnerId) {
     clearInterval(countdownInterval); // Detiene el posible countdown.
     countdownInterval = null; // Limpia la referencia del countdown.
     const winner = players.find(p => p.id === winnerId);
-    console.log(`Ronda terminada. Ganador: Jugador <span class="math-inline">\{winnerId\} \(</span>{winner?.name || 'Desconocido'})`);
+    console.log(`Ronda terminada. Ganador: Jugador ${winnerId} (${winner?.name || 'Desconocido'})`);
     broadcast({ type: 'roundWinner', winnerId: winnerId, winnerName: winner?.name, players: players.map(p => ({ id: p.id, name: p.name, holding: p.holding, eliminated: p.eliminated, blockedInRound: p.blockedInRound })) });
 
-    // Al finalizar la ronda, resetear el estado de 'holding' y 'blockedInRound' para todos los jugadores
+    // Cuando la ronda termina, limpiar solo el estado de bloqueo
+    // El 'holding' del jugador se mantiene hasta que él 'suelte' o sea eliminado.
     players.forEach(p => {
-        p.holding = false;
         p.blockedInRound = false;
     });
-    holdingPlayers.clear(); // Limpia los jugadores que apretaban.
+    // holdingPlayers.clear() DEBE IR AQUÍ para limpiar el set de la ronda anterior
+    holdingPlayers.clear(); // Limpia los jugadores que estaban "apretando" para la lógica de la ronda anterior.
 
     setTimeout(() => {
         checkGameOver(); // Después de un breve retraso, verifica si el juego ha terminado o si empieza otra ronda.
@@ -389,24 +406,25 @@ function checkGameOver() {
         clearInterval(countdownInterval);
         countdownInterval = null;
         players.forEach(p => p.isReady = false); // Resetear 'isReady' para que puedan volver a jugar
+        // NO resetear p.holding aquí si el juego termina sin ganador, ya que el estado se limpiará al reiniciar
         broadcastPlayerStatus();
     } else {
-        // Si hay más de un jugador activo y el juego NO ha terminado:
-        // Reiniciamos el estado de "listo" y "holding" de todos los jugadores activos para la nueva ronda.
+        // Si hay más de un jugador activo y el juego NO ha terminado (ir a la siguiente ronda):
+        // Reiniciamos el estado de "listo" y "blockedInRound".
+        // El 'holding' del jugador se mantiene si lo siguió apretando.
         players.forEach(p => {
             if (!p.eliminated) {
                 p.isReady = false; // Resetear el estado de listo para la nueva ronda
-                p.holding = false; // Asegurarse que no estén apretando al inicio de la fase de listo
                 p.blockedInRound = false; // Limpiar cualquier bloqueo anterior
+                // IMPORTANTE: NO resetear p.holding aquí
             }
         });
-        holdingPlayers.clear(); // También limpiar el set global de holdingPlayers
+        // holdingPlayers.clear() ya se hizo en endRound()
+
         broadcastPlayerStatus();
         console.log('Juego continúa. Esperando a que todos los jugadores se pongan "listos" para la próxima ronda.');
-        
     }
 }
-
 /**
  * Termina el juego completo y declara al campeón final.
  * @param {number} winnerId - El ID del jugador campeón.
