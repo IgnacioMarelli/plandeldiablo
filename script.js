@@ -1,7 +1,7 @@
 // Conexión al servidor WebSocket.
 // Asegúrate de reemplazar "TU_NOMBRE_DE_APP_HEROKU.herokuapp.com" con la URL de tu app en Heroku.
 // Usa 'wss://' para conexiones seguras, que Heroku proporciona automáticamente.
-const socket = new WebSocket('wss://https://plandeldiablo-6f2d69afee20.herokuapp.com/');
+const socket = new WebSocket('https://plandeldiablo-6f2d69afee20.herokuapp.com/');
 
 // Referencias a elementos del DOM
 const holdButton = document.getElementById('hold-button');
