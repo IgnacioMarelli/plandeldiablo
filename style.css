@@ -229,4 +229,83 @@ p {
         min-width: unset; /* Deja que el ancho se ajuste */
         flex: 1 1 45%; /* Dos columnas en pantallas pequeñas */
     }
+    
+}
+/* --- style.css (Solo las partes relevantes para el botón de unirse y el input) --- */
+
+/* Estilos generales del contenedor para el input y el botón */
+.input-section {
+    margin-bottom: 25px; /* Más espacio inferior */
+    display: flex; /* Para alinear el input y el botón en la misma línea */
+    gap: 10px; /* Espacio entre el input y el botón */
+    align-items: center; /* Centrar verticalmente los elementos */
+    justify-content: center; /* Centrar horizontalmente si el contenido es menor al ancho */
+    flex-wrap: wrap; /* Permitir que los elementos se envuelvan en pantallas pequeñas */
+}
+
+/* Estilos para el campo de texto del nombre */
+#name-input {
+    flex-grow: 1; /* Permitir que el input crezca para ocupar espacio disponible */
+    padding: 12px 15px; /* Más padding para un mejor toque y visibilidad */
+    border-radius: 8px; /* Bordes más suaves */
+    border: 2px solid #555; /* Borde más pronunciado */
+    background-color: #333; /* Fondo más oscuro */
+    color: #eee; /* Color de texto claro */
+    font-size: 1.1em; /* Texto un poco más grande */
+    outline: none; /* Quitar el contorno feo al enfocar */
+    transition: border-color 0.3s ease, box-shadow 0.3s ease; /* Transiciones suaves */
+}
+
+#name-input::placeholder {
+    color: #aaa; /* Color del placeholder */
+}
+
+#name-input:focus {
+    border-color: #61dafb; /* Borde azul al enfocar */
+    box-shadow: 0 0 8px rgba(97, 218, 251, 0.4); /* Sombra azul al enfocar */
+}
+
+/* Estilos para el botón "Unirse al juego" */
+#name-submit-button {
+    padding: 12px 25px; /* Más padding para un botón más grande y fácil de tocar */
+    border: none; /* Sin borde */
+    border-radius: 8px; /* Bordes más suaves */
+    background-color: #61dafb; /* Color principal (azul cian) */
+    color: #282c34; /* Texto oscuro para contraste */
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1.1em; /* Texto un poco más grande */
+    letter-spacing: 0.5px; /* Espaciado entre letras */
+    text-transform: uppercase; /* Texto en mayúsculas */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Sombra sutil */
+    transition: background-color 0.3s ease, transform 0.1s ease, box-shadow 0.3s ease; /* Transiciones suaves */
+    -webkit-tap-highlight-color: rgba(0,0,0,0); /* Evitar el resaltado azul en móviles */
+}
+
+#name-submit-button:hover {
+    background-color: #4fa3d1; /* Color más oscuro al pasar el mouse */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3); /* Sombra más pronunciada al pasar el mouse */
+}
+
+#name-submit-button:active {
+    transform: translateY(2px); /* Pequeño efecto de "apretar" */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Sombra reducida al apretar */
+}
+
+/* Media Queries para pantallas más pequeñas (móviles) */
+@media (max-width: 600px) {
+    .input-section {
+        flex-direction: column; /* Apilar el input y el botón verticalmente */
+        align-items: stretch; /* Estirar los elementos al ancho completo */
+    }
+
+    #name-input {
+        width: 100%; /* El input ocupa todo el ancho */
+        margin-right: 0; /* Sin margen a la derecha */
+        margin-bottom: 10px; /* Espacio entre el input y el botón cuando están apilados */
+    }
+
+    #name-submit-button {
+        width: 100%; /* El botón ocupa todo el ancho */
+    }
 }
