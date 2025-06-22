@@ -1,320 +1,363 @@
-// Conexión al servidor WebSocket.
-// --- Referencias al DOM (Elementos HTML) ---
-const statusMessage = document.getElementById('status-message');
-const roundWinnerDisplay = document.getElementById('round-winner');
-const gameOverMessage = document.getElementById('game-over-message');
-const timerDisplay = document.getElementById('timer-display');
-const holdButton = document.getElementById('hold-button');
-const playerStatusContainer = document.getElementById('player-status-container');
-const resetButton = document.getElementById('reset-button');
+const WebSocket = require('ws');
+const express = require('express');
+const path = require('path');
 
-// Elementos para el nombre del jugador
-const nameInput = document.getElementById('name-input');
-const nameSubmitButton = document.getElementById('name-submit-button');
-const nameSection = document.getElementById('name-section'); // El div que contiene el input y el botón
+const app = express();
+const PORT = process.env.PORT || 8080;
 
-// --- Variables de Estado del Cliente ---
-// !!! IMPORTANTE: REEMPLAZA ESTA URL CON LA DE TU APP DE HEROKU !!!
-const HEROKU_APP_URL = 'https://plandeldiablo-6f2d69afee20.herokuapp.com/'; // Ejemplo: wss://mi-juego-websocket.herokuapp.com
+// Sirve los archivos estáticos desde el directorio raíz del proyecto
+app.use(express.static(path.join(__dirname)));
 
-let socket = null; // La conexión WebSocket
-let playerId = null; // El ID que el servidor asigna a este cliente
-let playerName = 'Anónimo'; // El nombre que el jugador elige
-let gameStarted = false; // Indica si el juego está en curso
-let isHolding = false; // Indica si el botón está siendo presionado en este momento por este jugador
+const server = app.listen(PORT, () => {
+    console.log(`Servidor HTTP (Backend) escuchando en el puerto ${PORT}`);
+    console.log('Si estás en local, abre http://localhost:8080 en tu navegador.');
+    console.log('Si estás en Heroku, esta es la URL de tu backend para el WebSocket.');
+});
 
-// Variables para la reconexión automática
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 10; // Máximo de intentos antes de fallar
-const RECONNECT_DELAY_MS = 3000;  // Esperar 3 segundos antes de cada reintento
+const wss = new WebSocket.Server({ server });
 
-// --- Función para establecer la conexión WebSocket ---
-function connectWebSocket() {
-    socket = new WebSocket(HEROKU_APP_URL);
+// --- Variables y Estado del Juego ---
+const INITIAL_TIME_MS = 10 * 60 * 1000; // 10 minutos en milisegundos
+const MIN_PLAYERS_TO_START = 2;       // Mínimo de jugadores para iniciar el juego
+const ROUND_COUNTDOWN_SECONDS = 5;    // Segundos de cuenta regresiva al inicio de cada ronda
 
-    socket.onopen = () => {
-        console.log('Conectado al servidor WebSocket');
-        statusMessage.textContent = 'Conectado. Esperando a que ingreses tu nombre...';
-        nameSection.style.display = 'block'; // Asegura que la sección de nombre sea visible al conectar
-        holdButton.disabled = true; // Deshabilita el botón hasta que se ingrese un nombre y el juego inicie
-        reconnectAttempts = 0; // Resetear intentos al conectar exitosamente
-    };
+let players = [];                     // Lista de todos los jugadores conectados
+let nextPlayerId = 1;                 // Para asignar IDs únicos a nuevos jugadores
+let gameStarted = false;              // Indica si el juego está en curso
+let roundActive = false;              // Indica si una ronda de "mantener el botón" está activa
+let holdingPlayers = new Set();       // IDs de los jugadores que están actualmente apretando el botón
+let timeInterval = null;              // Intervalo para el temporizador de la ronda (consumo de tiempo)
+let countdownInterval = null;         // Intervalo para la cuenta regresiva de inicio de ronda
 
-    socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        console.log('Mensaje del servidor:', data);
+
+// --- Manejo de Conexiones WebSocket ---
+wss.on('connection', ws => {
+    const playerId = nextPlayerId++;
+    players.push({
+        id: playerId,
+        ws: ws,
+        name: `Jugador ${playerId}`, // Nombre por defecto inicial
+        timeRemaining: INITIAL_TIME_MS,
+        holding: false,
+        eliminated: false,
+        blockedInRound: false,
+        isReady: false // Estado de listo para cada jugador
+    });
+
+    console.log(`Jugador ${playerId} conectado. Total de jugadores: ${players.length}`);
+
+    ws.send(JSON.stringify({ type: 'playerConnected', playerId: playerId }));
+    broadcastPlayerStatus(); // Enviar el estado de listo también
+
+    // --- Manejo de Mensajes del Cliente ---
+    ws.on('message', message => {
+        const data = JSON.parse(message);
+        const player = players.find(p => p.id === data.playerId);
+
+        if (!player) return; // Asegurarse de que el jugador exista
 
         switch (data.type) {
-            case 'playerConnected':
-                playerId = data.playerId;
-                // Si el jugador ya ingresó un nombre antes de la conexión (ej. en una reconexión), lo envía al servidor.
-                if (playerName !== 'Anónimo') {
-                    socket.send(JSON.stringify({ type: 'setPlayerName', playerId: playerId, name: playerName }));
-                }
-                statusMessage.textContent = `Eres el Jugador ${playerId} (${playerName}). Esperando a los demás...`;
-                nameSection.style.display = 'none'; // Oculta la sección del nombre una vez conectado y con ID
+            case 'setPlayerName':
+                // Limita la longitud del nombre para evitar abusos o problemas de visualización
+                player.name = data.name.substring(0, 20);
+                console.log(`Jugador ${player.id} ahora se llama: ${player.name}`);
+                broadcastPlayerStatus();
                 break;
 
-            case 'gameStart':
-                gameStarted = true;
-                holdButton.disabled = false; // Habilita el botón al inicio del juego
-                statusMessage.textContent = '¡El juego ha comenzado! Mantén presionado el botón.';
-                roundWinnerDisplay.textContent = '';
-                gameOverMessage.textContent = '';
-                resetButton.style.display = 'none';
-                timerDisplay.textContent = 'Tu tiempo: --:--.--';
-                updatePlayerStatus(data.players);
-                break;
-
-            case 'playerStatusUpdate':
-                updatePlayerStatus(data.players);
-                // Si el juego está en curso y no hay mensajes específicos, mantener el mensaje de "en curso"
-                if (gameStarted && !statusMessage.textContent.includes('Ronda comienza en:') && !statusMessage.textContent.includes('Bloqueado')) {
-                     statusMessage.textContent = '¡El juego está en curso! Mantén presionado el botón.';
+            case 'playerReady':
+                // Solo si el juego no ha iniciado y el jugador no estaba listo
+                if (!gameStarted && !player.isReady) {
+                    player.isReady = true;
+                    console.log(`Jugador ${player.id} (${player.name}) está listo.`);
+                    broadcastPlayerStatus(); // Actualizar el estado de todos
+                    checkAllPlayersReady(); // Verificar si todos los jugadores activos están listos
                 }
                 break;
 
-            case 'playerEliminated':
-                if (data.eliminatedPlayerId === playerId) {
-                    holdButton.disabled = true;
-                    holdButton.classList.add('eliminated-button'); // Estilo rojo para botón bloqueado por eliminación
-                    statusMessage.textContent = '¡Has sido eliminado! Su tiempo se agotó.';
+            case 'hold':
+                if (player.eliminated || !gameStarted || player.blockedInRound) return;
+                // Si la ronda aún no ha iniciado (pero el juego sí), inicia la cuenta regresiva
+                if (!roundActive && !countdownInterval) {
+                    startCountdownAndRound();
                 }
-                updatePlayerStatus(data.players);
-                break;
-
-            case 'roundStart':
-                holdButton.disabled = false;
-                holdButton.classList.remove('eliminated-button');
-                holdButton.classList.remove('blocked'); // Asegurarse de que no esté bloqueado al inicio de una nueva ronda
-                isHolding = false;
-                timerDisplay.textContent = 'Tu tiempo: --:--.--';
-                statusMessage.textContent = '¡Nueva ronda! Mantén presionado el botón.';
-                roundWinnerDisplay.textContent = '';
-                updatePlayerStatus(data.players);
-                break;
-
-            case 'roundWinner':
-                roundWinnerDisplay.textContent = `¡${data.winnerName || 'El Jugador ' + data.winnerId} ganó la ronda!`;
-                holdButton.disabled = true; // Deshabilita el botón al final de la ronda
-                updatePlayerStatus(data.players);
-                break;
-
-            case 'gameOver':
-                gameStarted = false;
-                holdButton.disabled = true;
-                gameOverMessage.textContent = `¡Juego Terminado! ¡${data.winnerName || 'El Jugador ' + data.winnerId} es el campeón!`;
-                statusMessage.textContent = '';
-                roundWinnerDisplay.textContent = '';
-                resetButton.style.display = 'block'; // Muestra el botón de reinicio
-                updatePlayerStatus(data.players);
-                break;
-
-            case 'playerLeft':
-                statusMessage.textContent = `${data.playerName || 'Jugador ' + data.playerId} se ha desconectado.`;
-                updatePlayerStatus(data.players);
-                break;
-
-            case 'timeUpdate':
-                // Solo muestra el tiempo restante si eres el jugador activo
-                const remainingMinutes = Math.floor(data.remainingTime / 60000);
-                const remainingSeconds = Math.floor((data.remainingTime % 60000) / 1000);
-                const remainingMs = Math.floor((data.remainingTime % 1000) / 100); // Para décimas de segundo
-                timerDisplay.textContent = `Tu tiempo: ${remainingMinutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}.${remainingMs}`;
-                break;
-
-            case 'gameReset':
-                gameStarted = false;
-                holdButton.disabled = true;
-                holdButton.classList.remove('eliminated-button');
-                holdButton.classList.remove('blocked');
-                statusMessage.textContent = 'El juego ha sido reiniciado. Esperando jugadores...';
-                roundWinnerDisplay.textContent = '';
-                gameOverMessage.textContent = '';
-                resetButton.style.display = 'none';
-                timerDisplay.textContent = 'Tu tiempo: --:--.--';
-                playerStatusContainer.innerHTML = ''; // Limpia la lista de jugadores
-                nameSection.style.display = 'block'; // Muestra la sección del nombre de nuevo
-                playerName = 'Anónimo'; // Resetear nombre
-                playerId = null;
-                break;
-
-            case 'countdown': // Cuenta regresiva de la ronda
-                statusMessage.textContent = `Ronda comienza en: ${data.countdown} segundos...`;
-                holdButton.disabled = false; // El botón está habilitado durante la cuenta regresiva
-                holdButton.classList.remove('blocked'); // Asegurarse de que no esté bloqueado
-                holdButton.classList.remove('eliminated-button');
-                break;
-
-            case 'blockPlayer': // El servidor indica que este jugador ha sido bloqueado por no apretar a tiempo
-                if (data.playerIdToBlock === playerId) {
-                    holdButton.disabled = true;
-                    holdButton.classList.add('blocked'); // Añade la clase CSS para ponerlo rojo
-                    statusMessage.textContent = '¡No apretaste a tiempo! Bloqueado hasta la próxima ronda.';
+                if (!player.holding && !player.blockedInRound) {
+                    player.holding = true;
+                    holdingPlayers.add(player.id);
+                    broadcastPlayerStatus();
                 }
                 break;
+            case 'release':
+                if (player.eliminated || !gameStarted || player.blockedInRound) return;
+                if (player.holding) {
+                    player.holding = false;
+                    holdingPlayers.delete(player.id);
+                    broadcastPlayerStatus();
 
-            default:
-                console.warn('Tipo de mensaje desconocido:', data.type);
+                    // Si solo queda 1 jugador apretando, ese es el ganador de la ronda
+                    if (holdingPlayers.size === 1) {
+                        endRound(Array.from(holdingPlayers)[0]);
+                    } else if (holdingPlayers.size === 0 && roundActive) {
+                        // Si todos sueltan y la ronda estaba activa, se termina la ronda sin ganador y se chequea si el juego termina
+                        console.log('Todos soltaron. Ronda sin ganador.');
+                        roundActive = false;
+                        clearInterval(timeInterval);
+                        setTimeout(() => checkGameOver(), 2000); // Pequeña pausa antes de la siguiente acción
+                    }
+                }
+                break;
+            case 'resetGame':
+                // Solo el jugador 1 (el host inicial) puede reiniciar el juego
+                if (data.playerId === 1) {
+                    resetGame();
+                }
+                break;
         }
-    };
+    });
 
-    socket.onclose = (event) => {
-        console.log('Desconectado del servidor WebSocket. Código:', event.code, 'Razón:', event.reason);
-        statusMessage.textContent = 'Desconectado del servidor. Intentando reconectar...';
-        holdButton.disabled = true; // Deshabilita el botón al desconectarse
+    ws.on('close', () => {
+        const disconnectedPlayer = players.find(p => p.id === playerId);
+        console.log(`Jugador ${playerId} (${disconnectedPlayer?.name || 'Desconocido'}) desconectado.`);
 
-        // Lógica de reconexión
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            reconnectAttempts++;
-            console.log(`Intento de reconexión #${reconnectAttempts}...`);
-            setTimeout(connectWebSocket, RECONNECT_DELAY_MS); // Intenta reconectar después de un retraso
-        } else {
-            statusMessage.textContent = 'Fallo al reconectar después de varios intentos. Por favor, refresca la página.';
-            console.error('Máximo de intentos de reconexión alcanzado.');
+        // Eliminar al jugador de la lista
+        players = players.filter(p => p.ws !== ws);
+        holdingPlayers.delete(playerId); // Asegurarse de que no siga en la lista de los que aprietan
+
+        broadcastPlayerStatus(); // Actualizar el estado para todos los clientes restantes
+
+        // Lógica para el fin del juego si solo queda un jugador activo después de una desconexión
+        const activePlayers = players.filter(p => !p.eliminated);
+        if (gameStarted && activePlayers.length === 1) {
+            endGame(activePlayers[0].id);
+        } else if (players.length < MIN_PLAYERS_TO_START && gameStarted) {
+            // Si el número de jugadores cae por debajo del mínimo y el juego ya había iniciado, se reinicia.
+            console.log('No hay suficientes jugadores. Juego reiniciado.');
+            resetGame();
+            broadcast({ type: 'gameReset', message: 'No hay suficientes jugadores. Juego reiniciado.' });
+        } else if (!gameStarted) {
+            // Si el juego no ha iniciado, re-evaluar el estado de 'listo' de los jugadores restantes
+            checkAllPlayersReady();
         }
-    };
+    });
 
-    socket.onerror = (error) => {
-        console.error('Error en WebSocket:', error);
-        // Este error también activará onclose, donde se manejará la reconexión.
-    };
-}
-
-// --- Manejo de Interacción del Botón (Mouse/Touch) ---
-// Para PC y móviles (múltiples eventos para compatibilidad)
-holdButton.addEventListener('mousedown', (e) => {
-    e.preventDefault(); // Prevenir selección de texto en móviles
-    if (gameStarted && !isHolding && !holdButton.disabled) { // Ya no chequea clases, solo disabled
-        isHolding = true;
-        holdButton.classList.add('holding');
-        socket.send(JSON.stringify({ type: 'hold', playerId: playerId }));
-        console.log('Enviando hold');
-    }
+    ws.on('error', error => {
+        console.error(`Error del WebSocket del Jugador ${playerId} (${players.find(p => p.id === playerId)?.name || 'Desconocido'}):`, error);
+    });
 });
 
-holdButton.addEventListener('mouseup', (e) => {
-    e.preventDefault();
-    if (gameStarted && isHolding) {
-        isHolding = false;
-        holdButton.classList.remove('holding');
-        socket.send(JSON.stringify({ type: 'release', playerId: playerId }));
-        console.log('Enviando release');
-    }
-});
+// --- Funciones de Lógica del Juego ---
 
-holdButton.addEventListener('mouseleave', (e) => {
-    // Si el mouse sale del botón mientras está presionado, se considera un "release"
-    if (gameStarted && isHolding) {
-        isHolding = false;
-        holdButton.classList.remove('holding');
-        socket.send(JSON.stringify({ type: 'release', playerId: playerId }));
-        console.log('Enviando release (mouseleave)');
-    }
-});
-
-// Para dispositivos táctiles
-holdButton.addEventListener('touchstart', (e) => {
-    e.preventDefault(); // Prevenir el desplazamiento de la página
-    if (gameStarted && !isHolding && !holdButton.disabled) {
-        isHolding = true;
-        holdButton.classList.add('holding');
-        socket.send(JSON.stringify({ type: 'hold', playerId: playerId }));
-        console.log('Enviando hold (touch)');
-    }
-}, { passive: false }); // Usar { passive: false } para permitir preventDefault
-
-holdButton.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    if (gameStarted && isHolding) {
-        isHolding = false;
-        holdButton.classList.remove('holding');
-        socket.send(JSON.stringify({ type: 'release', playerId: playerId }));
-        console.log('Enviando release (touch)');
-    }
-});
-
-// --- Manejo del Botón de Reinicio (Admin) ---
-resetButton.addEventListener('click', () => {
-    // Solo permitimos que el jugador con ID 1 (el primero en conectar) reinicie
-    if (playerId === 1) {
-        socket.send(JSON.stringify({ type: 'resetGame' }));
-    } else {
-        alert('Solo el Jugador 1 puede reiniciar el juego.');
-    }
-});
-
-// --- Lógica para el Nombre del Jugador ---
-nameSubmitButton.addEventListener('click', () => {
-    const enteredName = nameInput.value.trim();
-    if (enteredName) {
-        playerName = enteredName; // Guarda el nombre elegido
-        // Si ya tenemos un ID de jugador (es decir, ya estamos conectados), lo enviamos al servidor
-        if (playerId) {
-            socket.send(JSON.stringify({ type: 'setPlayerName', playerId: playerId, name: playerName }));
-            statusMessage.textContent = `Eres el Jugador ${playerId} (${playerName}). Esperando a los demás...`;
-            nameSection.style.display = 'none'; // Oculta la sección del nombre
-        } else {
-            // Si aún no tenemos un playerId (la conexión está en curso o reconectando),
-            // simplemente guardamos el nombre. Se enviará una vez que 'playerConnected' ocurra.
-            statusMessage.textContent = `Nombre establecido como ${playerName}. Conectando...`;
-            nameSection.style.display = 'none'; // Oculta la sección del nombre inmediatamente
+// Envía un mensaje a todos los clientes conectados
+function broadcast(message) {
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(message));
         }
-    } else {
-        alert('Por favor, ingresa un nombre.');
-    }
-});
-
-// Permitir presionar Enter en el campo de texto para enviar el nombre
-nameInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        nameSubmitButton.click(); // Simula un clic en el botón
-    }
-});
-
-// --- Funciones de Actualización de la Interfaz ---
-function updatePlayerStatus(players) {
-    playerStatusContainer.innerHTML = ''; // Limpia la lista actual
-    players.forEach(player => {
-        const playerDiv = document.createElement('div');
-        playerDiv.className = 'player-status';
-
-        // Añadir clases CSS según el estado del jugador
-        if (player.holding) {
-            playerDiv.classList.add('holding');
-        }
-        if (player.eliminated) {
-            playerDiv.classList.add('eliminated');
-        }
-        if (player.id === playerId) { // Resalta a este propio jugador
-            playerDiv.classList.add('is-me');
-        }
-        if (player.blockedInRound) { // Nuevo: Si está bloqueado en esta ronda
-            playerDiv.classList.add('blockedInRound');
-        }
-
-        const nameSpan = document.createElement('span');
-        // Muestra el nombre si existe, de lo contrario, "Jugador [ID]"
-        nameSpan.textContent = `${player.name}`; // El nombre ya se maneja en el servidor
-        playerDiv.appendChild(nameSpan);
-
-        const statusSpan = document.createElement('span');
-        if (player.eliminated) {
-            statusSpan.textContent = 'ELIMINADO';
-        } else if (player.blockedInRound) { // Estado si está bloqueado
-             statusSpan.textContent = 'BLOQUEADO';
-        }
-        else if (player.holding) {
-            statusSpan.textContent = 'Manteniendo...';
-        } else {
-            statusSpan.textContent = 'Esperando...';
-        }
-        playerDiv.appendChild(statusSpan);
-
-        playerStatusContainer.appendChild(playerDiv);
     });
 }
 
-// --- Inicio de la Conexión ---
-// Llama a la función para conectar el WebSocket cuando la página se carga
-connectWebSocket();
+// Envía el estado actual de todos los jugadores a todos los clientes
+function broadcastPlayerStatus() {
+    const status = players.map(p => ({
+        id: p.id,
+        name: p.name,
+        holding: p.holding,
+        eliminated: p.eliminated,
+        blockedInRound: p.blockedInRound,
+        isReady: p.isReady // Enviar el estado de listo
+    }));
+    broadcast({ type: 'playerStatusUpdate', players: status });
+
+    // Mensaje de espera para que los clientes sepan cuántos están listos
+    if (!gameStarted) {
+        const activePlayers = players.filter(p => !p.eliminated);
+        const readyCount = activePlayers.filter(p => p.isReady).length;
+        broadcast({
+            type: 'waitingForReady',
+            readyCount: readyCount,
+            totalPlayers: activePlayers.length,
+            minPlayers: MIN_PLAYERS_TO_START
+        });
+    }
+}
+
+// Verifica si todos los jugadores activos (no eliminados) han pulsado "Listo"
+function checkAllPlayersReady() {
+    const activePlayers = players.filter(p => !p.eliminated);
+    // Para iniciar el juego, debe haber al menos MIN_PLAYERS_TO_START jugadores
+    // y todos los jugadores activos deben estar marcados como 'isReady'.
+    const allReady = activePlayers.length >= MIN_PLAYERS_TO_START && activePlayers.every(p => p.isReady);
+
+    if (allReady && !gameStarted) {
+        console.log('¡Todos los jugadores están listos! Iniciando juego...');
+        startGame();
+    } else if (!gameStarted) {
+        // Si no todos están listos y el juego no ha iniciado, se actualiza el estado
+        // Esto ya se maneja en broadcastPlayerStatus, que se llama después de cada cambio de estado de jugador.
+    }
+}
+
+// Inicia el juego principal
+function startGame() {
+    if (gameStarted) return; // Evita iniciar el juego si ya está en curso
+    gameStarted = true;
+    console.log('Juego iniciado.');
+    // Resetear el estado 'isReady' para que no afecte futuras rondas o reinicios manuales si el juego termina y vuelve a empezar
+    players.forEach(p => p.isReady = false);
+    broadcast({ type: 'gameStart', players: players.map(p => ({ id: p.id, name: p.name, holding: p.holding, eliminated: p.eliminated, blockedInRound: p.blockedInRound })) });
+    startCountdownAndRound(); // Inicia la primera ronda con una cuenta regresiva
+}
+
+// Inicia la cuenta regresiva antes de que comience una ronda de consumo de tiempo
+function startCountdownAndRound() {
+    if (roundActive || countdownInterval) return; // Evita iniciar si una ronda ya está activa o un countdown en curso
+
+    // Reiniciar estados de los jugadores para la nueva ronda
+    players.forEach(p => {
+        if (!p.eliminated) {
+            p.holding = false;
+            p.blockedInRound = false; // Quitar el bloqueo de la ronda anterior
+        }
+    });
+    holdingPlayers.clear(); // Limpiar la lista de jugadores apretando
+    broadcastPlayerStatus(); // Enviar el estado actualizado a los clientes
+
+    let countdown = ROUND_COUNTDOWN_SECONDS;
+    broadcast({ type: 'countdown', countdown: countdown }); // Iniciar el mensaje de cuenta regresiva
+
+    countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown >= 0) {
+            broadcast({ type: 'countdown', countdown: countdown });
+        }
+
+        if (countdown === 0) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+
+            // Bloquear a los jugadores que no apretaron el botón durante la cuenta regresiva
+            players.forEach(p => {
+                if (!p.holding && !p.eliminated) {
+                    p.blockedInRound = true; // Marcar como bloqueado en esta ronda
+                    p.ws.send(JSON.stringify({ type: 'blockPlayer', playerIdToBlock: p.id }));
+                }
+            });
+            broadcastPlayerStatus(); // Enviar el estado actualizado con los bloqueados
+
+            startRound(); // Iniciar la ronda de consumo de tiempo
+        }
+    }, 1000); // Actualiza cada segundo
+}
+
+// Inicia la ronda principal donde los jugadores pierden tiempo por mantener el botón
+function startRound() {
+    if (roundActive) return; // Evita iniciar si ya hay una ronda activa
+
+    roundActive = true;
+    console.log('Ronda iniciada (consumo de tiempo).');
+    broadcast({ type: 'roundStart', players: players.map(p => ({ id: p.id, name: p.name, holding: p.holding, eliminated: p.eliminated, blockedInRound: p.blockedInRound })) });
+
+    clearInterval(timeInterval); // Asegura que no haya intervalos duplicados
+    timeInterval = setInterval(() => {
+        // Filtra solo a los jugadores que están apretando, no eliminados y no bloqueados
+        let activeHoldingPlayers = players.filter(p => p.holding && !p.eliminated && !p.blockedInRound);
+
+        if (activeHoldingPlayers.length === 1) {
+            // Si solo queda uno apretando, ese es el ganador de la ronda
+            endRound(activeHoldingPlayers[0].id);
+            return;
+        } else if (activeHoldingPlayers.length === 0 && roundActive) {
+            // Si nadie está apretando y la ronda está activa, termina sin ganador
+            clearInterval(timeInterval);
+            roundActive = false;
+            console.log('Todos soltaron/bloqueados en la ronda, deteniendo timer.');
+            broadcast({ type: 'roundEndedNoWinner', message: 'Nadie mantuvo el botón en esta ronda.' });
+            setTimeout(() => checkGameOver(), 2000); // Pausa antes de la siguiente acción
+            return;
+        }
+
+        // Reduce el tiempo de los jugadores que están apretando
+        activeHoldingPlayers.forEach(player => {
+            player.timeRemaining -= 100; // Reduce 100ms (0.1 segundos)
+            if (player.timeRemaining <= 0) {
+                player.timeRemaining = 0;
+                player.eliminated = true; // El jugador es eliminado
+                player.holding = false;
+                holdingPlayers.delete(player.id); // Quitar de la lista de los que apretan
+                console.log(`Jugador ${player.id} (${player.name}) eliminado por tiempo.`);
+                // Notificar al cliente específico que fue eliminado
+                player.ws.send(JSON.stringify({ type: 'playerEliminated', eliminatedPlayerId: player.id, players: players.map(p => ({ id: p.id, name: p.name, holding: p.holding, eliminated: p.eliminated })) }));
+            }
+            // Enviar actualización de tiempo solo a los que siguen apretando y no están eliminados/bloqueados
+            if (player.holding && !player.eliminated && !player.blockedInRound) {
+                player.ws.send(JSON.stringify({ type: 'timeUpdate', remainingTime: player.timeRemaining }));
+            }
+        });
+
+        broadcastPlayerStatus(); // Actualizar el estado de todos los jugadores
+        checkGameOver(); // Verificar si el juego ha terminado después de cada tick de tiempo
+
+    }, 100); // Ejecuta cada 100ms (10 veces por segundo)
+}
+
+// Termina la ronda y declara un ganador
+function endRound(winnerId) {
+    if (!roundActive) return; // Evita terminar una ronda que no está activa
+    roundActive = false;
+    clearInterval(timeInterval); // Detiene el temporizador de la ronda
+    clearInterval(countdownInterval); // Detiene el posible countdown
+    countdownInterval = null; // Reinicia el intervalo del countdown
+    const winner = players.find(p => p.id === winnerId);
+    console.log(`Ronda terminada. Ganador: Jugador ${winnerId} (${winner?.name || 'Desconocido'})`);
+    broadcast({ type: 'roundWinner', winnerId: winnerId, winnerName: winner?.name, players: players.map(p => ({ id: p.id, name: p.name, holding: p.holding, eliminated: p.eliminated, blockedInRound: p.blockedInRound })) });
+
+    holdingPlayers.clear(); // Limpia los jugadores que apretaban
+
+    setTimeout(() => {
+        checkGameOver(); // Después de un breve retraso, verifica si el juego ha terminado o si empieza otra ronda
+    }, 2000);
+}
+
+// Verifica si el juego ha terminado o si debe empezar una nueva ronda
+function checkGameOver() {
+    const activePlayers = players.filter(p => !p.eliminated);
+    if (activePlayers.length === 1) {
+        // Si solo queda un jugador activo, ese es el campeón del juego
+        endGame(activePlayers[0].id);
+    } else if (activePlayers.length === 0) {
+        // Si todos los jugadores han sido eliminados, el juego termina sin un único ganador
+        console.log('Todos los jugadores han sido eliminados. Juego terminado sin un único ganador.');
+        broadcast({ type: 'gameOver', winnerId: 'Nadie', message: 'Todos los jugadores se quedaron sin tiempo.' });
+        gameStarted = false;
+        clearInterval(timeInterval);
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    } else {
+        // Si hay más de un jugador activo, empieza la siguiente ronda
+        startCountdownAndRound();
+    }
+}
+
+// Termina el juego completo y declara al campeón
+function endGame(winnerId) {
+    gameStarted = false; // El juego ya no está en curso
+    clearInterval(timeInterval); // Detiene cualquier temporizador de ronda activo
+    clearInterval(countdownInterval); // Detiene cualquier countdown activo
+    countdownInterval = null;
+    const winner = players.find(p => p.id === winnerId);
+    console.log(`¡Juego Terminado! El Jugador ${winnerId} (${winner?.name || 'Desconocido'}) es el campeón.`);
+    broadcast({ type: 'gameOver', winnerId: winnerId, winnerName: winner?.name, players: players.map(p => ({ id: p.id, name: p.name, holding: p.holding, eliminated: p.eliminated })) });
+}
+
+// Reinicia el juego a su estado inicial
+function resetGame() {
+    console.log('Reiniciando juego...');
+    gameStarted = false;
+    roundActive = false;
+    clearInterval(timeInterval);
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+    players = []; // Vacía la lista de jugadores
+    nextPlayerId = 1; // Resetea el contador de IDs
+    holdingPlayers.clear(); // Limpia el set de jugadores apretando
+    broadcast({ type: 'gameReset' }); // Notifica a todos los clientes del reinicio
+}
