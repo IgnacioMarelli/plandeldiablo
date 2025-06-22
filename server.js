@@ -371,6 +371,7 @@ function endRound(winnerId) {
  */
 function checkGameOver() {
     const activePlayers = players.filter(p => !p.eliminated); // Filtra los jugadores que no han sido eliminados.
+
     if (activePlayers.length === 1) {
         // Si solo queda un jugador activo, ese es el campeón del juego.
         endGame(activePlayers[0].id);
@@ -382,9 +383,23 @@ function checkGameOver() {
         clearInterval(timeInterval);
         clearInterval(countdownInterval);
         countdownInterval = null;
+        // Reiniciar el estado de 'isReady' para que puedan volver a jugar
+        players.forEach(p => p.isReady = false);
+        broadcastPlayerStatus(); // Actualiza para mostrar que nadie está listo (post-game over)
     } else {
-        // Si hay más de un jugador activo, inicia la siguiente ronda.
-        startCountdownAndRound();
+        // Si hay más de un jugador activo, el juego NO ha terminado.
+        // Reiniciamos el estado de "listo" de todos los jugadores activos para la nueva ronda.
+        players.forEach(p => {
+            if (!p.eliminated) {
+                p.isReady = false; // Resetear el estado de listo para la nueva ronda
+                p.holding = false; // Asegurarse que no estén apretando al inicio de la fase de listo
+                p.blockedInRound = false; // Limpiar cualquier bloqueo anterior
+            }
+        });
+        broadcastPlayerStatus(); // Esto enviará el mensaje 'waitingForReady'
+        console.log('Juego continúa. Esperando a que todos los jugadores se pongan "listos" para la próxima ronda.');
+        // No llamamos a startCountdownAndRound() directamente aquí.
+        // Se llamará desde checkAllPlayersReady() cuando todos estén listos.
     }
 }
 
@@ -400,6 +415,10 @@ function endGame(winnerId) {
     const winner = players.find(p => p.id === winnerId);
     console.log(`¡Juego Terminado! El Jugador ${winnerId} (${winner?.name || 'Desconocido'}) es el campeón.`);
     broadcast({ type: 'gameOver', winnerId: winnerId, winnerName: winner?.name, players: players.map(p => ({ id: p.id, name: p.name, holding: p.holding, eliminated: p.eliminated })) });
+
+    // Resetear el estado de 'isReady' de todos los jugadores después del final del juego
+    players.forEach(p => p.isReady = false);
+    broadcastPlayerStatus(); // Para que el frontend actualice el botón "Listo"
 }
 
 /**
@@ -417,4 +436,7 @@ function resetGame() {
     nextPlayerId = 1; // Resetea el contador de IDs.
     holdingPlayers.clear(); // Limpia el set de jugadores apretando.
     broadcast({ type: 'gameReset' }); // Notifica a todos los clientes del reinicio.
+    // Resetear el estado de 'isReady' de todos los jugadores al reiniciar
+    players.forEach(p => p.isReady = false);
+    broadcastPlayerStatus(); // Para que el frontend actualice el botón "Listo"
 }
