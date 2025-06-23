@@ -5,7 +5,7 @@ const gameOverMessage = document.getElementById('game-over-message');
 const timerDisplay = document.getElementById('timer-display');
 const holdButton = document.getElementById('hold-button');
 const playerStatusContainer = document.getElementById('player-status-container');
-const resetButton = document.getElementById('reset-button');
+const resetButton = document.getElementById('reset-button'); // Botón de reinicio global (admin)
 
 // Elementos para el nombre del jugador
 const nameInput = document.getElementById('name-input');
@@ -22,9 +22,9 @@ const HEROKU_APP_URL = 'wss://plandeldiablo-6f2d69afee20.herokuapp.com';
 let socket = null; // La conexión WebSocket
 let playerId = null; // El ID que el servidor asigna a este cliente
 let playerName = 'Anónimo'; // El nombre que el jugador elige
-let gameStarted = false; // Indica si el juego está en curso
+let gameStarted = false; // Indica si el juego está en curso (true cuando se consume tiempo)
 let isHolding = false; // Indica si el botón está siendo presionado en este momento por este jugador
-let isReady = false; // Estado de "listo" de este cliente
+let isReady = false; // Estado de "listo" de este cliente para la próxima ronda
 
 // Variables para la reconexión automática
 let reconnectAttempts = 0;
@@ -39,11 +39,12 @@ function connectWebSocket() {
         console.log('Conectado al servidor WebSocket');
         statusMessage.textContent = 'Conectado. Ingresa tu nombre para unirte.';
         nameSection.style.display = 'block'; // Asegura que la sección de nombre sea visible al conectar
-        // Al conectar, el juego NO está iniciado, así que actualizamos la UI.
-        gameStarted = false;
-        updateUIForGameState();
+        
+        gameStarted = false; // Al conectar, el juego NO está iniciado
+        isReady = false; // No estamos listos al inicio
+        updateUIForGameState(); // Actualiza la UI al estado inicial/de espera
+        
         reconnectAttempts = 0; // Resetear intentos al conectar exitosamente
-        isReady = false; // Resetear el estado de listo en cada reconexión
         readyButton.disabled = false; // Asegurar que el botón de listo no esté deshabilitado si lo estaba antes
         readyButton.textContent = 'Estoy Listo'; // Resetear el texto del botón de listo
     };
@@ -57,24 +58,22 @@ function connectWebSocket() {
                 playerId = data.playerId;
                 if (playerName !== 'Anónimo') {
                     socket.send(JSON.stringify({ type: 'setPlayerName', playerId: playerId, name: playerName }));
-                    nameSection.style.display = 'none';
-                    // Si ya tiene nombre, no está en la fase de "listo" aún,
-                    // se espera un waitingForReady o gameStart
+                    nameSection.style.display = 'none'; // Oculta la sección de nombre si ya tenemos uno
                 } else {
                     statusMessage.textContent = `Eres el Jugador ${playerId}. Ingresa tu nombre para continuar.`;
                 }
-                updateUIForGameState(); // Actualizar UI después de la conexión
+                updateUIForGameState(); // Siempre actualiza la UI al conectar
                 break;
 
             case 'gameStart':
                 gameStarted = true;
-                isReady = false; // El jugador ya no está "listo" para el inicio del juego
+                isReady = false; // Ya no estamos "listos", el juego ha iniciado
                 statusMessage.textContent = '¡El juego ha comenzado! Mantén presionado el botón.';
                 roundWinnerDisplay.textContent = '';
                 gameOverMessage.textContent = '';
                 timerDisplay.textContent = 'Tu tiempo: --:--.--';
                 updatePlayerStatus(data.players);
-                updateUIForGameState(); // Actualiza la interfaz para mostrar el botón de juego
+                updateUIForGameState(); // Cambia a la interfaz de juego activo
                 break;
 
             case 'playerStatusUpdate':
@@ -102,25 +101,36 @@ function connectWebSocket() {
                 timerDisplay.textContent = 'Tu tiempo: --:--.--';
                 statusMessage.textContent = '¡Nueva ronda! Mantén presionado el botón.';
                 roundWinnerDisplay.textContent = '';
-                updatePlayerStatus(data.players);
+                updatePlayerStatus(data.players); // Actualizar estado de jugadores al inicio de la ronda
                 break;
 
             case 'roundWinner':
-                gameStarted = false; // La ronda termina, el juego no está activo hasta la siguiente fase de 'listo'
+                gameStarted = false; // La ronda termina, el juego no está "en curso"
                 roundWinnerDisplay.textContent = `¡${data.winnerName || 'El Jugador ' + data.winnerId} ganó la ronda!`;
                 holdButton.disabled = true; // Deshabilita el botón al final de la ronda
                 updatePlayerStatus(data.players);
-                updateUIForGameState(); // Actualizar UI para el estado de espera
+                // El servidor enviará 'waitingForReady' después de un breve retraso,
+                // así que no llamamos updateUIForGameState aquí, lo hará 'waitingForReady'
                 break;
+            
+            case 'roundEndedNoWinner': // Si la ronda termina sin ganador (ej. todos sueltan)
+                gameStarted = false; // La ronda termina, el juego no está "en curso"
+                statusMessage.textContent = data.message;
+                roundWinnerDisplay.textContent = '';
+                holdButton.disabled = true;
+                updatePlayerStatus(data.players);
+                // El servidor enviará 'waitingForReady' después de un breve retraso
+                break;
 
             case 'gameOver':
                 gameStarted = false;
+                isReady = false; // Resetear estado de listo
                 holdButton.disabled = true;
                 gameOverMessage.textContent = `¡Juego Terminado! ¡${data.winnerName || 'El Jugador ' + data.winnerId} es el campeón!`;
                 statusMessage.textContent = '';
                 roundWinnerDisplay.textContent = '';
                 updatePlayerStatus(data.players);
-                updateUIForGameState(); // Muestra el botón de reinicio y listo
+                updateUIForGameState(); // Muestra el botón de reinicio y el "Listo" para un nuevo juego
                 break;
 
             case 'playerLeft':
@@ -130,15 +140,15 @@ function connectWebSocket() {
 
             case 'timeUpdate':
                 // Solo muestra el tiempo restante si eres el jugador activo
-                if (playerId === data.playerId) { // Asegurarse de que el tiempo es para ESTE jugador
+                if (playerId === data.playerId) {
                     const remainingMinutes = Math.floor(data.remainingTime / 60000);
                     const remainingSeconds = Math.floor((data.remainingTime % 60000) / 1000);
-                    const remainingMs = Math.floor((data.remainingTime % 1000) / 100); // Para décimas de segundo
+                    const remainingMs = Math.floor((data.remainingTime % 1000) / 100);
                     timerDisplay.textContent = `Tu tiempo: ${remainingMinutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}.${remainingMs}`;
                 }
                 break;
 
-            case 'gameReset':
+            case 'gameReset': // Este es el reinicio completo por el admin
                 gameStarted = false;
                 isReady = false; // Resetear el estado de listo
                 statusMessage.textContent = 'El juego ha sido reiniciado. Ingresa tu nombre para volver a unirte.';
@@ -151,15 +161,15 @@ function connectWebSocket() {
                 playerId = null;
                 readyButton.disabled = false; // Habilitar el botón de listo para el próximo juego
                 readyButton.textContent = 'Estoy Listo'; // Resetear el texto del botón de listo
-                updateUIForGameState(); // Actualiza la UI para el estado de inicio
+                updateUIForGameState(); // Actualiza la UI para el estado de inicio (con input de nombre)
                 break;
 
-            case 'countdown': // Cuenta regresiva de la ronda
+            case 'countdown': // Cuenta regresiva antes de una ronda
                 statusMessage.textContent = `Ronda comienza en: ${data.countdown} segundos...`;
-                holdButton.disabled = false; // El botón está habilitado durante la cuenta regresiva
-                holdButton.classList.remove('blocked'); // Asegurarse de que no esté bloqueado
+                holdButton.disabled = false; // El botón está habilitado durante la cuenta regresiva
+                holdButton.classList.remove('blocked');
                 holdButton.classList.remove('eliminated-button');
-                updateUIForGameState(); // Asegurar la visibilidad del botón de juego y ocultar listo
+                updateUIForGameState(); // Asegura la visibilidad del botón de juego y oculta el listo
                 break;
 
             case 'blockPlayer': // El servidor indica que este jugador ha sido bloqueado por no apretar a tiempo
@@ -170,31 +180,30 @@ function connectWebSocket() {
                 }
                 break;
 
-            case 'waitingForReady': // Mensaje de espera de jugadores listos
-                gameStarted = false; // El juego NO está activo, está en fase de "listo"
+            case 'waitingForReady': // Mensaje de espera de jugadores listos para la siguiente ronda
+                gameStarted = false; // El juego NO está en curso, estamos en la fase de "listo"
                 const readyCount = data.readyCount;
                 const totalPlayers = data.totalPlayers;
                 const minPlayers = data.minPlayers;
 
-                // Actualizar el estado 'isReady' del cliente si es necesario
+                // Actualizar el estado 'isReady' del cliente basándose en la información del servidor
                 const myPlayer = data.players.find(p => p.id === playerId);
                 if (myPlayer) {
                     isReady = myPlayer.isReady;
                 }
+                
+                // Actualizar el estado de los jugadores visible
+                updatePlayerStatus(data.players);
 
-                if (!isReady) { // Si este jugador no ha pulsado listo
+                if (!isReady) {
                     statusMessage.textContent = `Esperando a los demás: ${readyCount}/${totalPlayers} listos (${minPlayers} mínimo para iniciar).`;
-                } else { // Si este jugador ya pulsó listo
+                } else {
                     statusMessage.textContent = `¡Estás listo! Esperando a los demás: ${readyCount}/${totalPlayers} listos (${minPlayers} mínimo para iniciar).`;
                 }
-                updateUIForGameState(); // Actualizar UI para el estado de "listo"
-                if (isReady) { // Si ya se hizo clic, el botón debe estar deshabilitado
-                    readyButton.disabled = true;
-                    readyButton.textContent = '¡Listo!';
-                } else {
-                    readyButton.disabled = false;
-                    readyButton.textContent = 'Estoy Listo';
-                }
+
+                updateUIForGameState(); // Actualiza la UI para mostrar el botón "Listo"
+                readyButton.disabled = isReady; // Si ya está listo, deshabilita el botón
+                readyButton.textContent = isReady ? '¡Listo!' : 'Estoy Listo'; // Cambia el texto
                 break;
 
             default:
@@ -205,16 +214,16 @@ function connectWebSocket() {
     socket.onclose = (event) => {
         console.log('Desconectado del servidor WebSocket. Código:', event.code, 'Razón:', event.reason);
         statusMessage.textContent = 'Desconectado del servidor. Intentando reconectar...';
-        holdButton.disabled = true; // Deshabilita el botón al desconectarse
-        // nameSection.style.display = 'block'; // Muestra el input de nombre para que pueda volver a unirse/reconectar
+        holdButton.disabled = true;
         gameStarted = false; // El juego ya no está activo
         updateUIForGameState(); // Actualizar UI al estado de desconexión/reconexión
+        nameSection.style.display = 'block'; // Volver a mostrar para reingresar nombre si es necesario
 
         // Lógica de reconexión
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttempts++;
             console.log(`Intento de reconexión #${reconnectAttempts}...`);
-            setTimeout(connectWebSocket, RECONNECT_DELAY_MS); // Intenta reconectar después de un retraso
+            setTimeout(connectWebSocket, RECONNECT_DELAY_MS);
         } else {
             statusMessage.textContent = 'Fallo al reconectar después de varios intentos. Por favor, refresca la página.';
             console.error('Máximo de intentos de reconexión alcanzado.');
@@ -223,7 +232,6 @@ function connectWebSocket() {
 
     socket.onerror = (error) => {
         console.error('Error en WebSocket:', error);
-        // Este error también activará onclose, donde se manejará la reconexión.
     };
 }
 
@@ -299,15 +307,12 @@ nameSubmitButton.addEventListener('click', () => {
         if (playerId) {
             socket.send(JSON.stringify({ type: 'setPlayerName', playerId: playerId, name: playerName }));
             nameSection.style.display = 'none'; // Oculta la sección del nombre
-            // Ya no mostramos el botón de listo aquí directamente, updateUIForGameState lo manejará
-            isReady = false; // Resetear el estado de listo por si el jugador pone un nuevo nombre
-            readyButton.disabled = false; // Asegurar que el botón de listo esté habilitado
+            isReady = false; // El jugador acaba de poner su nombre, no está listo aún
+            readyButton.disabled = false; // Habilitar el botón de listo
             readyButton.textContent = 'Estoy Listo'; // Resetear el texto del botón de listo
             statusMessage.textContent = `¡Bienvenido ${playerName}! Pulsa 'Listo' para empezar.`;
             updateUIForGameState(); // Actualizar UI después de enviar el nombre
         } else {
-            // Si aún no tenemos un playerId (la conexión está en curso o reconectando),
-            // simplemente guardamos el nombre. Se enviará una vez que 'playerConnected' ocurra.
             statusMessage.textContent = `Nombre establecido como ${playerName}. Conectando...`;
             nameSection.style.display = 'none'; // Oculta la sección del nombre inmediatamente
         }
@@ -336,47 +341,56 @@ readyButton.addEventListener('click', () => {
 
 
 // --- Funciones de Actualización de la Interfaz ---
+// Esta función decide qué elementos mostrar/ocultar según el estado general del juego.
 function updateUIForGameState() {
-    // Mostrar/Ocultar elementos principales según el estado del juego
     if (gameStarted) {
+        // Estado: Juego en curso (ronda activa o countdown)
         readyButton.style.display = 'none';
         holdButton.style.display = 'block';
         resetButton.style.display = 'none'; // Ocultar reset durante el juego
-        nameSection.style.display = 'none'; // Asegurarse de que el nombre esté oculto
-        // Los mensajes de estado son dinámicos y se actualizan por los case de onmessage
+        nameSection.style.display = 'none'; // Asegurarse de que el input de nombre esté oculto
     } else {
-        // Juego no iniciado o esperando para la siguiente ronda (o game over, o reset)
-        readyButton.style.display = 'block'; // Mostrar el botón "Listo"
+        // Estado: Juego no iniciado, esperando "Listo", o Game Over, o Reiniciado
         holdButton.style.display = 'none'; // Ocultar el botón de juego
-        resetButton.style.display = 'block'; // Mostrar reset cuando el juego no está activo
-        // La sección de nombre puede aparecer si el playerId es null (recién conectado o reiniciado)
+        
+        // El botón "Listo" se muestra si ya se ingresó un nombre (playerId no es null)
+        readyButton.style.display = (playerId !== null) ? 'block' : 'none';
+        
+        // El botón de reinicio se muestra si el juego no está activo
+        resetButton.style.display = 'block'; 
+        
+        // La sección de nombre solo aparece si no tenemos un playerId (inicio o reset completo)
         nameSection.style.display = (playerId === null) ? 'block' : 'none';
     }
 
-    // El contenedor de estado de jugadores casi siempre es visible
+    // El contenedor de estado de jugadores siempre debe ser visible si hay jugadores
     playerStatusContainer.style.display = 'block';
 
-    // Limpiar mensajes anteriores si no son relevantes para el estado actual
-    if (!gameStarted && !statusMessage.textContent.includes('Esperando a los demás')) {
+    // Limpiar mensajes y contadores cuando no hay una ronda activa o juego en curso
+    if (!gameStarted && !statusMessage.textContent.includes('Esperando a los demás') && !statusMessage.textContent.includes('Conectado')) {
         roundWinnerDisplay.textContent = '';
         gameOverMessage.textContent = '';
         timerDisplay.textContent = 'Tu tiempo: --:--.--';
     }
 }
 
-// Función para actualizar la lista de jugadores (no la modifiqué)
+// Función para actualizar la lista de jugadores (no la modifiqué, debería estar bien)
 function updatePlayerStatus(players) {
     playerStatusContainer.innerHTML = ''; // Limpia el contenido actual
     players.forEach(player => {
         const playerDiv = document.createElement('div');
         playerDiv.classList.add('player-status-item');
+        if (player.id === playerId) { // Resaltar a este jugador
+            playerDiv.classList.add('self');
+        }
+
         if (player.eliminated) {
             playerDiv.classList.add('eliminated');
         } else if (player.blockedInRound) {
             playerDiv.classList.add('blocked-player');
         } else if (player.holding) {
             playerDiv.classList.add('holding-player'); // Clase para jugadores apretando
-        } else if (player.isReady) {
+        } else if (player.isReady) { // Asegurarse de que 'isReady' se muestre si no está holding, eliminado o bloqueado
             playerDiv.classList.add('ready-player'); // Clase para jugadores listos
         }
 
@@ -389,14 +403,13 @@ function updatePlayerStatus(players) {
     });
 }
 
-// Función para formatear el tiempo
+// Función para formatear el tiempo (mantener tal cual)
 function formatTime(milliseconds) {
     const minutes = Math.floor(milliseconds / 60000);
     const seconds = Math.floor((milliseconds % 60000) / 1000);
     const ms = Math.floor((milliseconds % 1000) / 100); // Para décimas de segundo
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${ms}`;
 }
-
 
 // --- Inicio de la Conexión ---
 // Llama a la función para conectar el WebSocket cuando la página se carga
